@@ -4,27 +4,27 @@
   become: yes
   tasks:
 
-    - debug:
-        msg: "{{ volumes }}"
+    # - debug:
+    #     msg: "{{ volumes }}"
 
-    - name: set hostname
-      include_tasks: tasks/hostname.yaml
+    # - name: set hostname
+    #   include_tasks: tasks/hostname.yaml
 
-    - name: set hostname
-      include_tasks: tasks/jenkins-files-update-tasks.yaml
+    # - name: set hostname
+    #   include_tasks: tasks/jenkins-files-update-tasks.yaml
 
     - name: do pre tasks
       include_tasks: tasks/pre-tasks.yaml
       when: volumes | length > 0
 
-    - name: run ebs taks
-      include_tasks: tasks/ebs.yaml
-      when: volumes | length > 0
+    # - name: run ebs taks
+    #   include_tasks: tasks/ebs.yaml
+    #   when: volumes | length > 0
 
-    - name: do swap
-      include_tasks: tasks/swap.yaml
-      when: (swap_disk is defined ) and ( swap_mounted == false)
+    # - name: do swap
+    #   include_tasks: tasks/swap.yaml
+    #   when: (swap_disk is defined ) and ( swap_mounted == false)
 
-    - name: do post tasks
-      include_tasks: tasks/post-tasks.yaml
-      when: volumes | length > 0
+    # - name: do post tasks
+    #   include_tasks: tasks/post-tasks.yaml
+    #   when: volumes | length > 0
