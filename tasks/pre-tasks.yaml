@@ -1,0 +1,85 @@
+    - name: get ec2 id
+      shell: curl -q http://169.254.169.254/latest/meta-data/instance-id
+      register: instance_raw
+
+    - set_fact:
+        instance_id: "{{ instance_raw.stdout }}"
+
+    - name: get volume(s) info from EC2 Instance
+      become: true
+      become_user: awx-nonprod
+      amazon.aws.ec2_vol_info:
+          region: "eu-central-1"
+          filters:
+            attachment.instance-id: "{{ instance_id }}"
+      register: vol_info
+
+    - name: Gather information about a particular instance using ID
+      become: true
+      become_user: awx-nonprod
+      amazon.aws.ec2_instance_info:
+          region: "eu-central-1"
+          instance_ids:
+            - "{{ instance_id }}"
+      register: ec2_info
+
+    - debug:
+        msg: "{{ ec2_info }}"
+
+    - set_fact:
+        instance_type: "{{ ec2_info.instances[0].instance_type }}"
+
+
+    - set_fact:
+        local_volumes : "{{ local_volumes | default({}) | combine ({ item.attachment_set[0].device : item.id | replace('-','') }) }}"
+      with_items: "{{ vol_info.volumes }}"
+
+    - name: create local devices
+      block:
+      - shell:  lsblk -o NAME,SERIAL |  grep vol | awk '{print $1 "/" $2}'
+        register: lsblk_raw
+
+      - set_fact:
+          local_devices: "{{ local_devices | default({})  | combine ({item.split('/')[1]: item.split('/')[0] }) }}"
+        with_items: "{{ lsblk_raw.stdout_lines }}"
+
+
+    - name: list with volids
+      vars:
+        disk_entry: "{{ item | combine({'volume_id': local_volumes[item.device_name]  } ) }}"
+      set_fact:
+        disks_with_volids: "{{ disks_with_volids| default([]) + [disk_entry]  }}"
+      with_items: "{{ volumes }}"
+      #with_items: "{{ volumes | selectattr('fs_type', '!=', 'swap') | list }}"
+
+    - debug:
+       msg: "{{ local_devices }}"
+
+    - debug:
+        msg: "{{ disks_with_volids }}"
+
+    - name: list with devids
+      vars:
+        #disk_entry: "{{ local_devices[item.volume_id] }}"
+        disk_entry: "{{ item | combine({'local_device_id': '/dev/' + local_devices[item.volume_id]  } ) }}"
+      set_fact:
+        disks_with_devids: "{{ disks_with_devids| default([]) + [disk_entry]  }}"
+      loop: "{{ disks_with_volids  | selectattr('fs_type', '!=', 'swap') | list }}"
+
+
+    - name:  swap entry
+      vars:
+        #disk_entry: "{{ local_devices[item.volume_id] }}"
+        disk_entry: "{{ item | combine({'local_device_id': '/dev/' + local_devices[item.volume_id]  } ) }}"
+      set_fact:
+        swap_disk: "{{ disk_entry  }}"
+      loop: "{{ disks_with_volids  | selectattr('fs_type', '==', 'swap') | list }}"
+
+    - shell: /usr/bin/lsblk -o +SERIAL | grep {{ swap_disk['local_device_id'].split('/')[2] }} | awk '{ print $7 }'
+      register: swap_result
+      when: "{{ swap_disk is defined }}"
+
+    - set_fact:
+         swap_mounted: "{{ swap_result.stdout_lines[0] == '[SWAP]' }}"
+      when: "{{ swap_disk is defined }}"
+

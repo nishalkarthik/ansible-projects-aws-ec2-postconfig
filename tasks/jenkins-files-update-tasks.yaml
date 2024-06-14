@@ -1,0 +1,66 @@
+- name: Copy SSL certificate file
+  ansible.builtin.copy:
+    src: files/certs/jenkins.jks
+    dest: /var/lib/jenkins/ssl/
+
+- name: Copy Jenkins.yaml configuration file
+  ansible.builtin.copy:
+    src: files/conf/jenkins.yaml
+    dest: /var/lib/jenkins/casc_configs/
+
+- name: Copy Jenkins service file
+  ansible.builtin.copy:
+    src: files/conf/jenkins.service
+    dest: /usr/lib/systemd/system/jenkins.service
+
+- name: Copy all SSL certificate files
+  ansible.builtin.copy:
+    src: files/crt/
+    dest: /opt/csvn/data/conf/
+    mode: preserve   # optional: to preserve the file modes
+
+- name: Copy CSVN main HTTPD configuration file
+  ansible.builtin.copy:
+    src: files/conf/csvn_main_httpd.conf
+    dest: /opt/csvn/data/conf/
+
+- name: Copy and replace AD password configuration file
+  ansible.builtin.copy:
+    src: files/conf/svn_viewvc_httpd.conf
+    dest: /opt/csvn/data/conf/
+
+- name: Ensure community.aws collection is installed
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install community.aws
+  check_mode: no
+
+- name: Retrieve the jenkins secret value from AWS Secrets Manager
+  set_fact:
+    jenkins_secret: "{{ lookup('amazon.aws.aws_secret', 'JENKINS_HTTPS_KEYSTORE_PASSWORD', region='us-east-1') }}"
+
+- name: Ensure Jenkins secret was retrieved successfully
+  fail:
+    msg: "Failed to retrieve the Jenkins secret"
+  when: jenkins_secret is not defined or jenkins_secret == ''
+
+- name: Update Jenkins service file with the secret value
+  ansible.builtin.replace:
+    path: "/usr/lib/systemd/system/jenkins.service"
+    regexp: 'Environment="JENKINS_HTTPS_KEYSTORE_PASSWORD=.*"'
+    replace: 'Environment="JENKINS_HTTPS_KEYSTORE_PASSWORD={{ jenkins_secret }}"'
+  notify: Restart Jenkins
+
+- name: Retrieve the LDAP secret value from AWS Secrets Manager
+  set_fact:
+    ldap_secret: "{{ lookup('amazon.aws.aws_secret', 'AuthLDAPBindPassword', region='us-east-1') }}"
+
+- name: Ensure LDAP secret was retrieved successfully
+  fail:
+    msg: "Failed to retrieve the LDAP secret"
+  when: ldap_secret is not defined or ldap_secret == ''
+
+- name: Update SVN ViewVC HTTPD configuration file with the LDAP secret value
+  ansible.builtin.replace:
+    path: "/opt/csvn/data/conf/svn_viewvc_httpd.conf"
+    regexp: 'AuthLDAPBindPassword ".*"'
+    replace: 'AuthLDAPBindPassword "{{ ldap_secret }}"'

@@ -1,0 +1,78 @@
+
+    - name: add items to local devices
+      block:
+      - shell:  lsblk -o NAME,SERIAL |  grep vol | awk '{print $1 "/" $2}'
+        register: lsblk_raw
+
+      - set_fact:
+          local_devices: "{{ local_devices | default({})  | combine ({item.split('/')[1]: item.split('/')[0] }) }}"
+        with_items: "{{ lsblk_raw.stdout_lines }}"
+
+    - name: create local devices3
+      block:
+      - shell:  lsblk -o NAME,FSTYPE,SERIAL,UUID  | grep 'xfs\|swap'| awk '{ print substr($1,3,length($1) - 4) "/" $2 "/" $3}' | grep -v 'nvme0'
+        register: lsblk_raw2
+
+      - set_fact:
+          local_devices3: "{{ local_devices3 | default({})  | combine ({item.split('/')[0]: item.split('/')[2] }) }}"
+        with_items: "{{ lsblk_raw2.stdout_lines }}"
+
+
+    - name: create a new list
+      debug:
+        msg: "{{ item.local_device_id.split('/')[2]  }}"
+      loop: "{{ disks_with_devids }}"
+
+
+    - name: create a new list
+      vars:
+        uuid_entry: "{{ item | combine({'uuid': local_devices3[item.local_device_id.split('/')[2]]  } ) }}"
+      set_fact:
+        disks_with_uuids: "{{ disks_with_uuids| default([]) + [uuid_entry]  }}"
+      loop: "{{ disks_with_devids }}"
+
+
+    - name: Do mount
+      mount:
+        path: "{{ item.mount_point }}"
+        src: "UUID={{ item.uuid }}"
+        fstype: "{{ item.fs_type }}"
+        state: mounted
+      with_items: "{{ disks_with_uuids }}"
+
+
+    -  name: os-prerequisite | Configure EBS swap volume
+       mount:
+        path: 'swap'
+        src:  "UUID={{ local_devices3[swap_disk['local_device_id'].split('/')[2]] }}"
+        fstype: 'swap'
+        state: 'present'
+        opts: 'sw'
+       when: "{{ swap_disk is defined }}"
+       
+    - name: os-prerequisite | Mount EBS swap volume
+      command: sudo swapon -a
+      when: "{{ swap_disk is defined }}"
+
+    - name: Register EC2 instance with Satellite
+      command: bash files/satellite_register_client.sh
+
+    - name: Update all packages with yum
+      command: yum update -y
+
+    - name: Stop SSH service so no remote connections are allowed until reboot
+      service:
+        name: sshd
+        state: stopped
+      ignore_errors: true
+    
+    - name: Schedule a reboot in 5 seconds
+      command: >
+        bash -c "sleep 10 && shutdown -r now"
+      async: 10
+      poll: 0
+      ignore_errors: true
+
+    - name: End playbook to allow reboot
+      debug:
+        msg: "Reboot scheduled, ending playbook execution."

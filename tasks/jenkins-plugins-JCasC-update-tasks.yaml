@@ -1,0 +1,31 @@
+- name: Set Jenkins URL
+  set_fact:
+    jenkins_url: "http://{{ public_ip.stdout }}:8080"
+
+- name: Debug Jenkins URL
+  debug:
+    msg: "Jenkins URL is {{ jenkins_url }}"
+
+- name: Download Jenkins CLI jar
+  get_url:
+    url: "{{ jenkins_url }}/jnlpJars/jenkins-cli.jar"
+    dest: /tmp/jenkins-cli.jar
+
+- name: Install Jenkins Plugins
+  shell: java -jar /tmp/jenkins-cli.jar -s {{ jenkins_url }} -auth {{ jenkins_user }}:{{ jenkins_password }} install-plugin {{ item }}
+  with_items:
+    - git
+  register: install_plugins
+
+- name: Restart Jenkins
+  shell: java -jar /tmp/jenkins-cli.jar -s {{ jenkins_url }} -auth {{ jenkins_user }}:{{ jenkins_password }} safe-restart
+  when: install_plugins.changed
+
+
+- name: Copy Jenkins.yaml configuration file
+  ansible.builtin.copy:
+    src: files/conf/jenkins.yaml
+    dest: /var/lib/jenkins/casc_configs/
+
+- name: Apply JCasC Configuration
+  shell: java -jar /tmp/jenkins-cli.jar -s http://{{ jenkins_url }} groovy = < /var/jenkins_home/casc_configs/jenkins.yml

@@ -1,0 +1,14 @@
+  
+   - name: Create a new primary partition
+     community.general.parted:
+        device: "{{ swap_disk['local_device_id'] }}"
+        number: 1
+        state: present
+
+   -  name: os-prerequisite | Create filesystem on EBS swap volume
+      command: mkswap {{ swap_disk['local_device_id'] }}p1
+      ignore_errors: true
+      when: "{{ swap_disk is defined }}"
+
+
+
