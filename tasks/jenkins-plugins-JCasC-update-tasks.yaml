@@ -2,6 +2,14 @@
   set_fact:
     jenkins_url: "http://{{ public_ip.stdout }}:8080"
 
+- name: Set Jenkins user
+  set_fact:
+    jenkins_user: "admin"
+
+- name: Set Jenkins passworf
+  set_fact:
+    jenkins_password: "admin123"
+
 - name: Debug Jenkins URL
   debug:
     msg: "Jenkins URL is {{ jenkins_url }}"
@@ -22,10 +30,10 @@
   when: install_plugins.changed
 
 
-- name: Copy Jenkins.yaml configuration file
-  ansible.builtin.copy:
-    src: files/conf/jenkins.yaml
-    dest: /var/lib/jenkins/casc_configs/
+# - name: Copy Jenkins.yaml configuration file
+#   ansible.builtin.copy:
+#     src: files/conf/jenkins.yaml
+#     dest: /var/lib/jenkins/casc_configs/
 
-- name: Apply JCasC Configuration
-  shell: java -jar /tmp/jenkins-cli.jar -s http://{{ jenkins_url }} groovy = < /var/jenkins_home/casc_configs/jenkins.yml
+# - name: Apply JCasC Configuration
+#   shell: java -jar /tmp/jenkins-cli.jar -s http://{{ jenkins_url }} groovy = < /var/jenkins_home/casc_configs/jenkins.yml
